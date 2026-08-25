@@ -1,0 +1,9 @@
+[package]
+name = "mote-backend-hip"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+mote-kernel = { path = "../mote-kernel" }

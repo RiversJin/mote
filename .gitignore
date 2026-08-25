@@ -1,0 +1,8 @@
+/target
+.direnv
+.envrc
+result
+*.ptx
+*.cubin
+*.hsaco
+*.spv

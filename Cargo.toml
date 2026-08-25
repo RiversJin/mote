@@ -1,0 +1,20 @@
+[workspace]
+members = [
+    "crates/mote-core",
+    "crates/mote-kernel",
+    "crates/mote-cube",
+    "crates/mote-backend-cuda",
+    "crates/mote-backend-hip",
+    "crates/mote-backend-vulkan",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+license = "Apache-2.0"
+rust-version = "1.85"
+version = "0.0.1"
+
+[workspace.dependencies]
+anyhow = "1"
+thiserror = "2"
