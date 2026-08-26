@@ -1,10 +1,13 @@
-use crate::{DType, Encoding, Layout, LayoutError, NumelOverflow, QuantFormat, Shape};
+use crate::{Encoding, Layout, LayoutError, NumelOverflow, QuantFormat, Shape};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TensorDesc {
     shape: Shape,
     encoding: Encoding,
     layout: Layout,
+    numel: usize,
+    span_bytes: usize,
+    contiguous: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -27,22 +30,35 @@ pub enum TensorDescError {
 
 impl TensorDesc {
     pub fn new(shape: Shape, encoding: Encoding, layout: Layout) -> Result<Self, TensorDescError> {
-        if let Encoding::Quantized(format) = encoding {
-            return Err(TensorDescError::UnsupportedQuantizedEncoding { format });
-        }
+        let dtype = match encoding {
+            Encoding::Plain(dtype) => dtype,
+            Encoding::Quantized(format) => {
+                return Err(TensorDescError::UnsupportedQuantizedEncoding { format });
+            }
+        };
 
         layout.validate_for(&shape)?;
         layout.validate_for_encoding(&encoding)?;
-        shape.checked_numel()?;
 
-        let descriptor = Self {
+        let numel = shape.checked_numel()?;
+        let contiguous = layout.is_contiguous(&shape)?;
+        let span_elements = layout.checked_span_elements(&shape)?;
+        let element_size = dtype.size_bytes();
+        let span_bytes = span_elements.checked_mul(element_size).ok_or(
+            TensorDescError::ByteSpanOverflow {
+                span_elements,
+                element_size,
+            },
+        )?;
+
+        Ok(Self {
             shape,
             encoding,
             layout,
-        };
-        descriptor.required_span_bytes()?;
-
-        Ok(descriptor)
+            numel,
+            span_bytes,
+            contiguous,
+        })
     }
 
     pub fn shape(&self) -> &Shape {
@@ -61,36 +77,15 @@ impl TensorDesc {
         self.shape.rank()
     }
 
-    pub fn numel(&self) -> Result<usize, NumelOverflow> {
-        self.shape.checked_numel()
+    pub fn numel(&self) -> usize {
+        self.numel
     }
 
-    pub fn is_contiguous(&self) -> Result<bool, LayoutError> {
-        self.layout.is_contiguous(&self.shape)
+    pub fn is_contiguous(&self) -> bool {
+        self.contiguous
     }
 
-    pub fn required_span_bytes(&self) -> Result<usize, TensorDescError> {
-        let span_elements = self.layout.checked_span_elements(&self.shape)?;
-        let element_size = self.plain_dtype()?.size_bytes();
-
-        span_elements
-            .checked_mul(element_size)
-            .ok_or(TensorDescError::ByteSpanOverflow {
-                span_elements,
-                element_size,
-            })
-    }
-
-    pub fn required_alignment(&self) -> Result<usize, TensorDescError> {
-        Ok(self.plain_dtype()?.size_bytes())
-    }
-
-    fn plain_dtype(&self) -> Result<DType, TensorDescError> {
-        match self.encoding {
-            Encoding::Plain(dtype) => Ok(dtype),
-            Encoding::Quantized(format) => {
-                Err(TensorDescError::UnsupportedQuantizedEncoding { format })
-            }
-        }
+    pub fn required_span_bytes(&self) -> usize {
+        self.span_bytes
     }
 }

@@ -12,10 +12,9 @@ fn describes_a_contiguous_plain_tensor() {
     .unwrap();
 
     assert_eq!(descriptor.rank(), 3);
-    assert_eq!(descriptor.numel(), Ok(24));
-    assert_eq!(descriptor.is_contiguous(), Ok(true));
-    assert_eq!(descriptor.required_span_bytes(), Ok(96));
-    assert_eq!(descriptor.required_alignment(), Ok(4));
+    assert_eq!(descriptor.numel(), 24);
+    assert!(descriptor.is_contiguous());
+    assert_eq!(descriptor.required_span_bytes(), 96);
 }
 
 #[test]
@@ -27,10 +26,9 @@ fn uses_the_strided_physical_span_for_plain_tensors() {
     )
     .unwrap();
 
-    assert_eq!(descriptor.numel(), Ok(6));
-    assert_eq!(descriptor.is_contiguous(), Ok(false));
-    assert_eq!(descriptor.required_span_bytes(), Ok(16));
-    assert_eq!(descriptor.required_alignment(), Ok(2));
+    assert_eq!(descriptor.numel(), 6);
+    assert!(!descriptor.is_contiguous());
+    assert_eq!(descriptor.required_span_bytes(), 16);
 }
 
 #[test]
@@ -42,8 +40,8 @@ fn empty_tensor_requires_no_storage_span() {
     )
     .unwrap();
 
-    assert_eq!(descriptor.numel(), Ok(0));
-    assert_eq!(descriptor.required_span_bytes(), Ok(0));
+    assert_eq!(descriptor.numel(), 0);
+    assert_eq!(descriptor.required_span_bytes(), 0);
 }
 
 #[test]
