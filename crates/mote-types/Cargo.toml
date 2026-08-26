@@ -1,0 +1,10 @@
+[package]
+name = "mote-types"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+smallvec.workspace = true

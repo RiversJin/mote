@@ -6,6 +6,7 @@ members = [
     "crates/mote-backend-cuda",
     "crates/mote-backend-hip",
     "crates/mote-backend-vulkan",
+    "crates/mote-types",
 ]
 resolver = "2"
 
@@ -18,3 +19,4 @@ version = "0.0.1"
 [workspace.dependencies]
 anyhow = "1"
 thiserror = "2"
+smallvec = "1"
