@@ -44,12 +44,13 @@ impl TensorDesc {
         let contiguous = layout.is_contiguous(&shape)?;
         let span_elements = layout.checked_span_elements(&shape)?;
         let element_size = dtype.size_bytes();
-        let span_bytes = span_elements.checked_mul(element_size).ok_or(
-            TensorDescError::ByteSpanOverflow {
-                span_elements,
-                element_size,
-            },
-        )?;
+        let span_bytes =
+            span_elements
+                .checked_mul(element_size)
+                .ok_or(TensorDescError::ByteSpanOverflow {
+                    span_elements,
+                    element_size,
+                })?;
 
         Ok(Self {
             shape,
