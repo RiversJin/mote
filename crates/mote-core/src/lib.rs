@@ -1,5 +1,15 @@
 //! Core runtime types for Mote.
 
+mod device;
+mod storage;
+mod tensor;
+
+pub use device::{BackendKind, Device};
+pub use storage::{
+    CpuOwnedStorage, CpuStorageError, Storage, StorageError, StorageId, StorageImpl,
+};
+pub use tensor::{Tensor, TensorError};
+
 use mote_kernel::{KernelKey, KernelRegistry};
 
 pub struct Runtime {

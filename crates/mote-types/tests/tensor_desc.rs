@@ -15,6 +15,7 @@ fn describes_a_contiguous_plain_tensor() {
     assert_eq!(descriptor.numel(), 24);
     assert!(descriptor.is_contiguous());
     assert_eq!(descriptor.required_span_bytes(), 96);
+    assert_eq!(descriptor.required_alignment(), 4);
 }
 
 #[test]
@@ -29,6 +30,7 @@ fn uses_the_strided_physical_span_for_plain_tensors() {
     assert_eq!(descriptor.numel(), 6);
     assert!(!descriptor.is_contiguous());
     assert_eq!(descriptor.required_span_bytes(), 16);
+    assert_eq!(descriptor.required_alignment(), 2);
 }
 
 #[test]

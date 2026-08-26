@@ -28,6 +28,7 @@ name = "mote-core"
 version = "0.0.1"
 dependencies = [
  "mote-kernel",
+ "mote-types",
  "thiserror",
 ]
 

@@ -24,6 +24,14 @@ impl DType {
             Self::I8 | Self::U8 => 1,
         }
     }
+
+    pub const fn alignment_bytes(self) -> usize {
+        match self {
+            Self::F32 | Self::I32 => 4,
+            Self::F16 | Self::BF16 => 2,
+            Self::I8 | Self::U8 => 1,
+        }
+    }
 }
 
 #[allow(non_camel_case_types)]

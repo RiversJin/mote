@@ -8,6 +8,7 @@ pub struct TensorDesc {
     numel: usize,
     span_bytes: usize,
     contiguous: bool,
+    alignment_bytes: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -59,6 +60,7 @@ impl TensorDesc {
             numel,
             span_bytes,
             contiguous,
+            alignment_bytes: dtype.alignment_bytes(),
         })
     }
 
@@ -88,5 +90,9 @@ impl TensorDesc {
 
     pub fn required_span_bytes(&self) -> usize {
         self.span_bytes
+    }
+
+    pub fn required_alignment(&self) -> usize {
+        self.alignment_bytes
     }
 }
