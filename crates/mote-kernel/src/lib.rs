@@ -2,28 +2,13 @@
 
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Backend {
-    Cube,
-    Cuda,
-    Hip,
-    Vulkan,
-}
+use mote_types::{DType, Device};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct KernelKey {
     pub op: &'static str,
-    pub backend: Backend,
-    pub arch: Option<String>,
-    pub dtype: &'static str,
+    pub dtype: Option<DType>,
     pub shape_class: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct DeviceInfo {
-    pub backend: Backend,
-    pub arch: Option<String>,
-    pub name: String,
 }
 
 #[derive(Debug)]
@@ -41,8 +26,8 @@ pub enum KernelError {
 
 pub trait KernelImpl: Send + Sync {
     fn name(&self) -> &'static str;
-    fn supports(&self, device: &DeviceInfo, key: &KernelKey) -> bool;
-    fn launch(&self, device: &DeviceInfo, args: &KernelArgs<'_>) -> Result<(), KernelError>;
+    fn supports(&self, device: &Device, key: &KernelKey) -> bool;
+    fn launch(&self, device: &Device, args: &KernelArgs<'_>) -> Result<(), KernelError>;
 }
 
 #[derive(Default)]
@@ -55,10 +40,17 @@ impl KernelRegistry {
         self.entries.entry(key).or_default().push(Box::new(kernel));
     }
 
-    pub fn resolve(&self, key: &KernelKey) -> Option<&dyn KernelImpl> {
+    /// Resolve the highest-precedence implementation supported by `device`.
+    ///
+    /// Later registrations take precedence. This lets a portable implementation
+    /// be registered first and backend-specific specializations override it
+    /// without changing the semantic kernel key.
+    pub fn resolve(&self, key: &KernelKey, device: &Device) -> Option<&dyn KernelImpl> {
         self.entries
-            .get(key)
-            .and_then(|kernels| kernels.first())
+            .get(key)?
+            .iter()
+            .rev()
             .map(Box::as_ref)
+            .find(|kernel| kernel.supports(device, key))
     }
 }

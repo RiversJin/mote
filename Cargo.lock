@@ -27,7 +27,6 @@ dependencies = [
 name = "mote-core"
 version = "0.0.1"
 dependencies = [
- "mote-kernel",
  "mote-types",
  "thiserror",
 ]
@@ -37,13 +36,24 @@ name = "mote-cube"
 version = "0.0.1"
 dependencies = [
  "mote-kernel",
+ "mote-types",
 ]
 
 [[package]]
 name = "mote-kernel"
 version = "0.0.1"
 dependencies = [
+ "mote-types",
  "thiserror",
+]
+
+[[package]]
+name = "mote-runtime"
+version = "0.0.1"
+dependencies = [
+ "mote-core",
+ "mote-kernel",
+ "mote-types",
 ]
 
 [[package]]

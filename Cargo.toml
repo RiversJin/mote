@@ -2,6 +2,7 @@
 members = [
     "crates/mote-core",
     "crates/mote-kernel",
+    "crates/mote-runtime",
     "crates/mote-cube",
     "crates/mote-backend-cuda",
     "crates/mote-backend-hip",

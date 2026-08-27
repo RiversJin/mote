@@ -1,12 +1,14 @@
+mod device;
 mod layout;
 mod tensor_desc;
 
+pub use device::{BackendKind, Device};
 pub use layout::{Layout, LayoutError, Strides};
 pub use tensor_desc::{TensorDesc, TensorDescError};
 
 use smallvec::SmallVec;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DType {
     F32,
     F16,
