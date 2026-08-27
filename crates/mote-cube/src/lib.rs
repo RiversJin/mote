@@ -6,6 +6,8 @@
 use mote_kernel::{KernelArgs, KernelError, KernelImpl, KernelKey};
 use mote_types::Device;
 
+pub mod vector_add;
+
 pub struct PortableKernel {
     name: &'static str,
 }

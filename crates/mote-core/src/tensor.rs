@@ -73,7 +73,9 @@ impl Tensor {
         if span_bytes != 0 {
             let required_alignment = desc.required_alignment();
             let storage_alignment = storage.alignment();
-            if storage_alignment < required_alignment || byte_offset % required_alignment != 0 {
+            if storage_alignment < required_alignment
+                || !byte_offset.is_multiple_of(required_alignment)
+            {
                 return Err(TensorError::Misaligned {
                     byte_offset,
                     required_alignment,
