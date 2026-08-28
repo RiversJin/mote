@@ -1,6 +1,5 @@
 /target
 .direnv
-.envrc
 result
 *.ptx
 *.cubin

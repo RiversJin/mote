@@ -6,6 +6,12 @@
 use mote_kernel::{KernelArgs, KernelError, KernelImpl, KernelKey};
 use mote_types::Device;
 
+mod context;
+mod error;
+mod storage;
+
+pub use context::CubeContext;
+pub use error::CubeError;
 pub mod vector_add;
 
 pub struct PortableKernel {

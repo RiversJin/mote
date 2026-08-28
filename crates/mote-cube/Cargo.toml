@@ -6,7 +6,7 @@ license.workspace = true
 rust-version.workspace = true
 
 [features]
-default = ["cpu"]
+default = []
 cpu = ["cubecl/cpu"]
 cuda = ["cubecl/cuda"]
 hip = ["cubecl/hip"]
@@ -15,4 +15,6 @@ vulkan = ["cubecl/vulkan"]
 [dependencies]
 mote-kernel = { path = "../mote-kernel" }
 mote-types = { path = "../mote-types" }
+mote-core = { path = "../mote-core" }
+thiserror.workspace = true
 cubecl = { workspace = true, features = ["std", "stdlib"] }

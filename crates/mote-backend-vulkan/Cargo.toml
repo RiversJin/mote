@@ -4,6 +4,25 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+build = "build.rs"
+
+[features]
+default = []
+comparison = ["dep:cubecl", "dep:mote-cube", "cubecl/vulkan", "mote-cube/vulkan"]
+vulkan-tests = []
 
 [dependencies]
-mote-kernel = { path = "../mote-kernel" }
+cubecl = { workspace = true, features = ["std", "stdlib"], optional = true }
+mote-core = { path = "../mote-core" }
+mote-cube = { path = "../mote-cube", optional = true }
+mote-types = { path = "../mote-types" }
+thiserror.workspace = true
+vulkano = { version = "0.35.2", default-features = false }
+
+[build-dependencies]
+naga = { version = "29", features = ["spv-out", "wgsl-in"] }
+
+[[bench]]
+name = "vector_add"
+harness = false
+required-features = ["comparison"]
