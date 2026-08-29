@@ -9,7 +9,11 @@ rust-version.workspace = true
 default = []
 cpu = ["cubecl/cpu"]
 cuda = ["cubecl/cuda"]
-hip = ["cubecl/hip"]
+hip = [
+    "cubecl/hip",
+    "dep:cubecl-runtime",
+    "dep:cubecl-hip-sys",
+]
 vulkan = ["cubecl/vulkan"]
 
 [dependencies]
@@ -18,3 +22,13 @@ mote-types = { path = "../mote-types" }
 mote-core = { path = "../mote-core" }
 thiserror.workspace = true
 cubecl = { workspace = true, features = ["std", "stdlib"] }
+cubecl-runtime = { workspace = true, optional = true }
+cubecl-hip-sys = { workspace = true, optional = true }
+cubek-matmul.workspace = true
+cubek-std.workspace = true
+half.workspace = true
+
+[[bench]]
+name = "matmul_hip"
+harness = false
+required-features = ["hip"]

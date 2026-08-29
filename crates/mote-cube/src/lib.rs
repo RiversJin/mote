@@ -8,10 +8,15 @@ use mote_types::Device;
 
 mod context;
 mod error;
+#[cfg(feature = "hip")]
+mod hip;
 mod storage;
 
 pub use context::CubeContext;
 pub use error::CubeError;
+#[cfg(feature = "hip")]
+pub use hip::{HipDeviceSlice, HipNativeResource};
+pub mod matmul;
 pub mod vector_add;
 
 pub struct PortableKernel {

@@ -45,10 +45,47 @@ pub enum QuantFormat {
     Q6_K,
 }
 
+impl QuantFormat {
+    /// Logical elements covered by one quantization block (ggml-common.h ABI).
+    pub const fn block_elements(self) -> usize {
+        match self {
+            Self::Q4_0 | Self::Q8_0 => 32,
+            Self::Q4_K | Self::Q6_K => 256,
+        }
+    }
+
+    /// Bytes occupied by one quantization block (ggml-common.h ABI).
+    pub const fn block_bytes(self) -> usize {
+        match self {
+            Self::Q4_0 => 18,
+            Self::Q8_0 => 34,
+            Self::Q4_K => 144,
+            Self::Q6_K => 210,
+        }
+    }
+
+    /// Byte alignment required by quantized block storage.
+    pub const fn alignment_bytes(self) -> usize {
+        match self {
+            Self::Q4_0 | Self::Q8_0 | Self::Q6_K => 2,
+            Self::Q4_K => 4,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Encoding {
     Plain(DType),
     Quantized(QuantFormat),
+}
+
+/// Pairing convention used by rotary position embeddings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum RopeLayout {
+    /// Pair the first and second halves of the rotary dimensions.
+    HalfSplit,
+    /// Pair adjacent dimensions `(0, 1)`, `(2, 3)`, and so on.
+    Interleaved,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

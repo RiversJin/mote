@@ -53,8 +53,32 @@ pub enum VulkanError {
         actual: Shape,
     },
 
+    #[error("{tensor} tensor has rank {actual}, expected rank {expected}")]
+    RankMismatch {
+        tensor: &'static str,
+        expected: usize,
+        actual: usize,
+    },
+
+    #[error("matrix dimensions M={m}, N={n}, K={k} do not fit Vulkan push constants")]
+    MatmulDimensionsTooLarge { m: usize, n: usize, k: usize },
+
+    #[error("the selected Vulkan device does not support F16/F32 cooperative matrices")]
+    CooperativeMatrixUnsupported,
+
+    #[error(
+        "cooperative-matrix dimensions require M/K multiples of 16 and N a multiple of 64, got M={m}, N={n}, K={k}"
+    )]
+    CooperativeMatrixShapeUnsupported { m: usize, n: usize, k: usize },
+
     #[error("launch geometry overflow for {numel} elements")]
     LaunchGeometryOverflow { numel: usize },
+
+    #[error("the selected Vulkan compute queue does not support timestamp queries")]
+    TimestampQueriesUnsupported,
+
+    #[error("Vulkan timestamp query results were unavailable after dispatch completion")]
+    TimestampResultsUnavailable,
 
     #[error(transparent)]
     Storage(#[from] StorageError),

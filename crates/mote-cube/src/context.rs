@@ -36,6 +36,16 @@ impl<R: cubecl::Runtime> CubeContext<R> {
         &self.device
     }
 
+    /// Whether this runtime reports at least one cooperative-matrix configuration.
+    pub fn supports_cooperative_matrix(&self) -> bool {
+        !self.client.properties().features.matmul.cmma.is_empty()
+    }
+
+    /// Number of cooperative-matrix element/shape combinations reported by the runtime.
+    pub fn cooperative_matrix_config_count(&self) -> usize {
+        self.client.properties().features.matmul.cmma.len()
+    }
+
     pub fn empty(&self, desc: TensorDesc) -> Result<Tensor, CubeError> {
         self.validate_desc(&desc)?;
         let size_bytes = desc.required_span_bytes();
@@ -66,6 +76,12 @@ impl<R: cubecl::Runtime> CubeContext<R> {
             .read_one(handle)
             .map_err(|source| CubeError::Readback { source })?;
         Ok(bytes.to_vec())
+    }
+
+    /// Wait until all work submitted through this context has completed.
+    pub fn sync(&self) -> Result<(), CubeError> {
+        cubecl::future::block_on(self.client.sync())
+            .map_err(|source| CubeError::Synchronization { source })
     }
 
     fn validate_desc(&self, desc: &TensorDesc) -> Result<(), CubeError> {

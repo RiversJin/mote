@@ -30,6 +30,16 @@ pub enum CubeError {
         actual: Shape,
     },
 
+    #[error("{tensor} tensor has rank {actual}, expected rank {expected}")]
+    RankMismatch {
+        tensor: &'static str,
+        expected: usize,
+        actual: usize,
+    },
+
+    #[error("CubeK matrix multiplication setup failed: {message}")]
+    MatmulSetup { message: String },
+
     #[error("non-zero tensor byte offset {byte_offset} is unsupported")]
     UnsupportedByteOffset { byte_offset: usize },
 
@@ -47,6 +57,24 @@ pub enum CubeError {
 
     #[error("CubeCL readback failed: {source}")]
     Readback {
+        #[source]
+        source: ServerError,
+    },
+
+    #[error("CubeCL synchronization failed: {source}")]
+    Synchronization {
+        #[source]
+        source: ServerError,
+    },
+
+    #[error("CubeCL resource export failed: {source}")]
+    ResourceExport {
+        #[source]
+        source: ServerError,
+    },
+
+    #[error("CubeCL native submission failed: {source}")]
+    NativeSubmission {
         #[source]
         source: ServerError,
     },

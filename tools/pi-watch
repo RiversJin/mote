@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+set -o pipefail
+
+usage() {
+    cat >&2 <<'EOF'
+Usage: pi-watch [--raw PATH] [--] [pi arguments...]
+
+Runs pi in JSON mode and prints a compact event timeline. --raw writes the
+unmodified JSONL stream to PATH with mode 600. All other arguments are passed
+to pi; --mode is reserved by this wrapper.
+EOF
+}
+
+raw_path=
+pi_args=()
+while (($#)); do
+    case $1 in
+        --raw)
+            (($# >= 2)) || { echo "pi-watch: --raw needs a path" >&2; exit 2; }
+            raw_path=$2
+            shift 2
+            ;;
+        --raw=*)
+            raw_path=${1#--raw=}
+            [[ -n $raw_path ]] || { echo "pi-watch: --raw needs a path" >&2; exit 2; }
+            shift
+            ;;
+        --)
+            shift
+            pi_args+=("$@")
+            break
+            ;;
+        --mode|--mode=*)
+            echo "pi-watch: --mode is fixed to json" >&2
+            exit 2
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            pi_args+=("$1")
+            shift
+            ;;
+    esac
+done
+
+if [[ -n $raw_path ]]; then
+    # Do not expose prompts/results through a newly-created world-readable log.
+    umask 077
+    if ! : >>"$raw_path"; then
+        echo "pi-watch: cannot write raw stream: $raw_path" >&2
+        exit 1
+    fi
+    chmod 600 "$raw_path" 2>/dev/null || true
+fi
+
+timeline_filter=''
+read -r -d "" timeline_filter <<'JQ' || true
+def short_id:
+  if . == null then "?" else (tostring | if length > 12 then .[0:12] else . end) end;
+def role: (.message.role // "?");
+def usage:
+  (.message.usage // .usage) as $u |
+  if $u == null then "" else
+    ([("in=" + (($u.input // $u.inputTokens // "?")|tostring)),
+      ("out=" + (($u.output // $u.outputTokens // "?")|tostring)),
+      (if $u.totalTokens then "total=" + ($u.totalTokens|tostring) else empty end)] | join(" "))
+  end;
+def cost:
+  (.message.usage.cost // .message.cost // .usage.cost // .cost) as $c |
+  if $c == null then "" else "cost=" + (($c.total // $c.totalCost // $c.total // "?")|tostring) end;
+def suffix:
+  ([usage, cost] | map(select(length > 0)) | join(" ")) as $s |
+  (.message.stopReason // .stopReason) as $stop |
+  (if $stop then " stop=" + ($stop|tostring) else "" end) +
+  (if $s != "" then " " + $s else "" end);
+
+if .type == "session" then
+  "session " + (.id|short_id) + " cwd=" + (.cwd // "?")
+elif .type == "agent_start" then "agent start"
+elif .type == "agent_end" then "agent end messages=" + ((.messages|length)|tostring)
+elif .type == "turn_start" then "turn start"
+elif .type == "turn_end" then "turn end" + suffix
+elif .type == "message_start" and role == "assistant" then "assistant start"
+elif .type == "message_end" and role == "assistant" then "assistant end" + suffix
+elif .type == "message_update" then
+  (.assistantMessageEvent.type // "") as $t |
+  if ($t|test("^(text_start|text_end)$")) then "assistant stream " + (if $t == "text_start" then "start" else "end" end)
+  elif ($t|test("^(thinking_start|thinking_end)$")) then "thinking " + (if $t == "thinking_start" then "start" else "end" end)
+  elif ($t|test("^(toolcall_start|tool_call_start)$")) then "assistant tool-call start"
+  elif ($t|test("^(toolcall_end|tool_call_end)$")) then "assistant tool-call end"
+  else empty end
+elif .type == "tool_execution_start" then "tool start " + (.toolName // "?") + " id=" + (.toolCallId|short_id)
+elif .type == "tool_execution_end" then "tool end " + (.toolName // "?") + (if .isError then " ERROR" else "" end)
+elif .type == "compaction_start" then "compaction start reason=" + (.reason // "?")
+elif .type == "compaction_end" then "compaction end reason=" + (.reason // "?") + (if .aborted then " aborted" else "" end) + (if .willRetry then " retry" else "" end)
+elif .type == "auto_retry_start" then "retry start attempt=" + (.attempt|tostring) + "/" + (.maxAttempts|tostring)
+elif .type == "auto_retry_end" then "retry end" + (if .success then " success" else " failed" end)
+else empty end
+JQ
+
+run_pi() {
+    pi --mode json "${pi_args[@]}"
+}
+
+render_timeline() {
+    jq --unbuffered -r "$timeline_filter" |
+        while IFS= read -r line; do
+            printf '[%(%H:%M:%S)T] %s\n' -1 "$line"
+        done
+}
+
+if [[ -n $raw_path ]]; then
+    run_pi | tee -a "$raw_path" | render_timeline
+else
+    run_pi | render_timeline
+fi
+
+pipe_status=(${PIPESTATUS[@]})
+# The final stage is jq; pi is the first stage in both pipelines.
+exit "${pipe_status[0]}"

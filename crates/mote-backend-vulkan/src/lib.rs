@@ -5,6 +5,7 @@
 
 mod context;
 mod error;
+pub mod matmul;
 mod storage;
 pub mod vector_add;
 

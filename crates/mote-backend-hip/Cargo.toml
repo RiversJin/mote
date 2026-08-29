@@ -5,5 +5,28 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+[features]
+default = []
+rocm = ["dep:half"]
+
 [dependencies]
-mote-kernel = { path = "../mote-kernel" }
+mote-core = { path = "../mote-core" }
+mote-types = { path = "../mote-types" }
+thiserror.workspace = true
+half = { workspace = true, optional = true }
+
+[dev-dependencies]
+mote-reference = { path = "../mote-reference" }
+
+[build-dependencies]
+cc = "1"
+
+[[bench]]
+name = "matmul"
+harness = false
+required-features = ["rocm"]
+
+[[bench]]
+name = "quantized_linear"
+harness = false
+required-features = ["rocm"]

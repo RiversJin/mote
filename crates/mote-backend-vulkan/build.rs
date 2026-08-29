@@ -1,34 +1,60 @@
-use std::{env, fs, path::PathBuf};
+use std::{env, path::PathBuf, process::Command};
 
 fn main() {
-    const SHADER_PATH: &str = "shaders/vector_add.wgsl";
+    const SHADERS: &[(&str, &str)] = &[
+        ("shaders/vector_add.slang", "vector_add.spv"),
+        ("shaders/matmul.slang", "matmul.spv"),
+        ("shaders/matmul_cmma.slang", "matmul_cmma.spv"),
+    ];
 
-    println!("cargo:rerun-if-changed={SHADER_PATH}");
+    println!("cargo:rerun-if-env-changed=SLANGC");
 
-    let source = fs::read_to_string(SHADER_PATH).expect("failed to read vector_add WGSL");
-    let module = naga::front::wgsl::parse_str(&source).expect("failed to parse vector_add WGSL");
-    let info = naga::valid::Validator::new(
-        naga::valid::ValidationFlags::all(),
-        naga::valid::Capabilities::empty(),
-    )
-    .validate(&module)
-    .expect("failed to validate vector_add WGSL");
-    let words = naga::back::spv::write_vec(
-        &module,
-        &info,
-        &naga::back::spv::Options::default(),
-        Some(&naga::back::spv::PipelineOptions {
-            shader_stage: naga::ShaderStage::Compute,
-            entry_point: "main".into(),
-        }),
-    )
-    .expect("failed to compile vector_add WGSL to SPIR-V");
+    let manifest_dir =
+        PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is not set"));
+    let output_dir = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR is not set"));
+    let slangc = env::var_os("SLANGC").unwrap_or_else(|| "slangc".into());
 
-    let output =
-        PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR is not set")).join("vector_add.spv");
-    let bytes = words
-        .iter()
-        .flat_map(|word| word.to_le_bytes())
-        .collect::<Vec<_>>();
-    fs::write(output, bytes).expect("failed to write vector_add SPIR-V");
+    for &(shader_path, output_name) in SHADERS {
+        println!("cargo:rerun-if-changed={shader_path}");
+        compile_shader(
+            &slangc,
+            &manifest_dir.join(shader_path),
+            &output_dir.join(output_name),
+        );
+    }
+}
+
+fn compile_shader(
+    slangc: &std::ffi::OsStr,
+    shader: &std::path::Path,
+    output_path: &std::path::Path,
+) {
+    let status = Command::new(slangc)
+        .arg(shader)
+        .args([
+            "-entry",
+            "main",
+            "-stage",
+            "compute",
+            "-target",
+            "spirv",
+            "-profile",
+            "glsl_460+spirv_1_3",
+            "-O3",
+            "-o",
+        ])
+        .arg(output_path)
+        .status()
+        .unwrap_or_else(|error| {
+            panic!(
+                "failed to run `{}`: {error}; enter `nix develop` or set SLANGC",
+                PathBuf::from(&slangc).display()
+            )
+        });
+
+    assert!(
+        status.success(),
+        "Slang failed to compile {}",
+        shader.display()
+    );
 }

@@ -2,14 +2,32 @@ use std::time::{Duration, Instant};
 
 use cubecl::{
     Runtime,
+    prelude::ComputeClient,
+    profile::TimingMethod,
     wgpu::{WgpuDevice, WgpuRuntime},
 };
-use mote_backend_vulkan::{VulkanContext, vector_add::vector_add as vulkan_vector_add};
+use mote_backend_vulkan::{
+    VulkanContext,
+    vector_add::{profile_vector_add, vector_add as vulkan_vector_add, vector_add_batch},
+};
+use mote_core::Tensor;
 use mote_cube::{CubeContext, vector_add::vector_add as cube_vector_add};
 use mote_types::{BackendKind, DType, Device, Encoding, Layout, Shape, TensorDesc};
 
 const COLD_NUMEL: usize = 1 << 20;
+const SAMPLES: usize = 9;
 const CASES: &[(usize, usize)] = &[(1 << 10, 2_000), (1 << 20, 200), (1 << 23, 40)];
+
+struct CaseResult {
+    numel: usize,
+    dispatches: usize,
+    sync_cube: Duration,
+    sync_vulkan: Duration,
+    batch_cube: Duration,
+    batch_vulkan: Duration,
+    device_cube: Duration,
+    device_vulkan: Duration,
+}
 
 fn main() {
     let cube_client = WgpuRuntime::client(&WgpuDevice::DiscreteGpu(0));
@@ -19,7 +37,11 @@ fn main() {
     let vulkan_context = VulkanContext::new(0).expect("failed to initialize direct Vulkan context");
 
     println!("device: {}", vulkan_context.device_name());
-    println!("timing: host wall-clock, one GPU synchronization per dispatch");
+    println!(
+        "CubeCL timing capability: {}",
+        cube_client.properties().timing_method
+    );
+    println!("samples per case: {SAMPLES} (median reported, order alternates)");
 
     let (lhs_bytes, rhs_bytes) = input_bytes(COLD_NUMEL);
     let desc = plain_f32_desc(COLD_NUMEL);
@@ -68,16 +90,12 @@ fn main() {
             .expect("Vulkan cold readback failed"),
     );
 
-    println!("cold launch ({COLD_NUMEL} elements):");
+    println!("synchronous cold launch ({COLD_NUMEL} elements):");
     println!("  CubeCL Vulkan : {:>10.3} ms", millis(cube_cold));
     println!("  direct Vulkan : {:>10.3} ms", millis(vulkan_cold));
-    println!();
-    println!(
-        "{:>12} {:>8} {:>14} {:>12} {:>14} {:>12} {:>10}",
-        "elements", "iters", "CubeCL us", "GB/s", "Vulkan us", "GB/s", "Vk/Cube"
-    );
 
-    for &(numel, iterations) in CASES {
+    let mut results = Vec::with_capacity(CASES.len());
+    for &(numel, dispatches) in CASES {
         let (lhs_bytes, rhs_bytes) = input_bytes(numel);
         let desc = plain_f32_desc(numel);
         let cube_lhs = cube_context
@@ -99,21 +117,74 @@ fn main() {
             .empty(desc)
             .expect("failed to allocate Vulkan output");
 
-        cube_vector_add(&cube_context, &cube_lhs, &cube_rhs, &cube_output)
-            .expect("CubeCL warmup failed");
-        sync_cube(&cube_client);
-        vulkan_vector_add(&vulkan_context, &vulkan_lhs, &vulkan_rhs, &vulkan_output)
-            .expect("Vulkan warmup failed");
-
-        let cube_elapsed = measure(iterations, || {
+        for _ in 0..5 {
             cube_vector_add(&cube_context, &cube_lhs, &cube_rhs, &cube_output)
-                .expect("CubeCL benchmark launch failed");
+                .expect("CubeCL warmup failed");
             sync_cube(&cube_client);
-        });
-        let vulkan_elapsed = measure(iterations, || {
             vulkan_vector_add(&vulkan_context, &vulkan_lhs, &vulkan_rhs, &vulkan_output)
-                .expect("Vulkan benchmark launch failed");
-        });
+                .expect("Vulkan warmup failed");
+        }
+
+        let (sync_cube_time, sync_vulkan_time) = measure_pairs(
+            || {
+                measure(dispatches, || {
+                    cube_vector_add(&cube_context, &cube_lhs, &cube_rhs, &cube_output)
+                        .expect("CubeCL synchronous launch failed");
+                    sync_cube(&cube_client);
+                })
+                .div_f64(dispatches as f64)
+            },
+            || {
+                measure(dispatches, || {
+                    vulkan_vector_add(&vulkan_context, &vulkan_lhs, &vulkan_rhs, &vulkan_output)
+                        .expect("Vulkan synchronous launch failed");
+                })
+                .div_f64(dispatches as f64)
+            },
+        );
+
+        let (batch_cube_time, batch_vulkan_time) = measure_pairs(
+            || {
+                let elapsed = measure(1, || {
+                    for _ in 0..dispatches {
+                        cube_vector_add(&cube_context, &cube_lhs, &cube_rhs, &cube_output)
+                            .expect("CubeCL batched launch failed");
+                    }
+                    sync_cube(&cube_client);
+                });
+                elapsed.div_f64(dispatches as f64)
+            },
+            || {
+                measure(1, || {
+                    vector_add_batch(
+                        &vulkan_context,
+                        &vulkan_lhs,
+                        &vulkan_rhs,
+                        &vulkan_output,
+                        dispatches,
+                    )
+                    .expect("Vulkan batched launch failed");
+                })
+                .div_f64(dispatches as f64)
+            },
+        );
+
+        let (device_cube_time, device_vulkan_time) = measure_pairs(
+            || {
+                profile_cube_vector_add(
+                    &cube_client,
+                    &cube_context,
+                    &cube_lhs,
+                    &cube_rhs,
+                    &cube_output,
+                    1,
+                )
+            },
+            || {
+                profile_vector_add(&vulkan_context, &vulkan_lhs, &vulkan_rhs, &vulkan_output, 1)
+                    .expect("Vulkan timestamp profiling failed")
+            },
+        );
 
         assert_output(
             &cube_context
@@ -126,17 +197,107 @@ fn main() {
                 .expect("Vulkan readback failed"),
         );
 
-        let cube_average = cube_elapsed.div_f64(iterations as f64);
-        let vulkan_average = vulkan_elapsed.div_f64(iterations as f64);
-        println!(
-            "{:>12} {:>8} {:>14.3} {:>12.2} {:>14.3} {:>12.2} {:>10.2}",
+        results.push(CaseResult {
             numel,
-            iterations,
-            micros(cube_average),
-            bandwidth_gbps(numel, cube_average),
-            micros(vulkan_average),
-            bandwidth_gbps(numel, vulkan_average),
-            vulkan_average.as_secs_f64() / cube_average.as_secs_f64(),
+            dispatches,
+            sync_cube: sync_cube_time,
+            sync_vulkan: sync_vulkan_time,
+            batch_cube: batch_cube_time,
+            batch_vulkan: batch_vulkan_time,
+            device_cube: device_cube_time,
+            device_vulkan: device_vulkan_time,
+        });
+    }
+
+    print_table(
+        "synchronous end-to-end latency (one completion per dispatch)",
+        &results,
+        |result| result.dispatches,
+        |result| (result.sync_cube, result.sync_vulkan),
+    );
+    print_table(
+        "batched runtime throughput (one explicit final sync, per-dispatch average)",
+        &results,
+        |result| result.dispatches,
+        |result| (result.batch_cube, result.batch_vulkan),
+    );
+    print_table(
+        "GPU timestamp latency (one dispatch per sample)",
+        &results,
+        |_| 1,
+        |result| (result.device_cube, result.device_vulkan),
+    );
+}
+
+fn measure_pairs(
+    mut cube_operation: impl FnMut() -> Duration,
+    mut vulkan_operation: impl FnMut() -> Duration,
+) -> (Duration, Duration) {
+    let mut cube_samples = Vec::with_capacity(SAMPLES);
+    let mut vulkan_samples = Vec::with_capacity(SAMPLES);
+
+    for sample in 0..SAMPLES {
+        if sample % 2 == 0 {
+            cube_samples.push(cube_operation());
+            vulkan_samples.push(vulkan_operation());
+        } else {
+            vulkan_samples.push(vulkan_operation());
+            cube_samples.push(cube_operation());
+        }
+    }
+
+    (median(cube_samples), median(vulkan_samples))
+}
+
+fn profile_cube_vector_add(
+    client: &ComputeClient<WgpuRuntime>,
+    context: &CubeContext<WgpuRuntime>,
+    lhs: &Tensor,
+    rhs: &Tensor,
+    output: &Tensor,
+    dispatches: usize,
+) -> Duration {
+    sync_cube(client);
+    let (_, profile) = client
+        .profile(
+            || {
+                for _ in 0..dispatches {
+                    cube_vector_add(context, lhs, rhs, output)
+                        .expect("CubeCL profiled launch failed");
+                }
+            },
+            "vector_add",
+        )
+        .expect("CubeCL timestamp profiling failed");
+    assert_eq!(
+        profile.timing_method(),
+        TimingMethod::Device,
+        "CubeCL WGPU timestamp queries are unavailable"
+    );
+    cubecl::future::block_on(profile.resolve()).duration()
+}
+
+fn print_table(
+    title: &str,
+    results: &[CaseResult],
+    dispatches: impl Fn(&CaseResult) -> usize,
+    select: impl Fn(&CaseResult) -> (Duration, Duration),
+) {
+    println!();
+    println!("{title}:");
+    println!(
+        "{:>12} {:>12} {:>14} {:>14} {:>12}",
+        "elements", "dispatches", "CubeCL us", "Vulkan us", "Cube/Vk"
+    );
+    for result in results {
+        let (cube, vulkan) = select(result);
+        println!(
+            "{:>12} {:>12} {:>14.3} {:>14.3} {:>12.2}",
+            result.numel,
+            dispatches(result),
+            micros(cube),
+            micros(vulkan),
+            cube.as_secs_f64() / vulkan.as_secs_f64(),
         );
     }
 }
@@ -149,7 +310,12 @@ fn measure(iterations: usize, mut operation: impl FnMut()) -> Duration {
     started.elapsed()
 }
 
-fn sync_cube(client: &cubecl::prelude::ComputeClient<WgpuRuntime>) {
+fn median(mut samples: Vec<Duration>) -> Duration {
+    samples.sort_unstable();
+    samples[samples.len() / 2]
+}
+
+fn sync_cube(client: &ComputeClient<WgpuRuntime>) {
     cubecl::future::block_on(client.sync()).expect("CubeCL synchronization failed");
 }
 
@@ -190,9 +356,4 @@ fn micros(duration: Duration) -> f64 {
 
 fn millis(duration: Duration) -> f64 {
     duration.as_secs_f64() * 1_000.0
-}
-
-fn bandwidth_gbps(numel: usize, duration: Duration) -> f64 {
-    let transferred_bytes = numel as f64 * size_of::<f32>() as f64 * 3.0;
-    transferred_bytes / duration.as_secs_f64() / 1_000_000_000.0
 }

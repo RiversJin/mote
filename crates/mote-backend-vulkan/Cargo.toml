@@ -13,16 +13,19 @@ vulkan-tests = []
 
 [dependencies]
 cubecl = { workspace = true, features = ["std", "stdlib"], optional = true }
+half.workspace = true
 mote-core = { path = "../mote-core" }
 mote-cube = { path = "../mote-cube", optional = true }
 mote-types = { path = "../mote-types" }
 thiserror.workspace = true
 vulkano = { version = "0.35.2", default-features = false }
 
-[build-dependencies]
-naga = { version = "29", features = ["spv-out", "wgsl-in"] }
-
 [[bench]]
 name = "vector_add"
+harness = false
+required-features = ["comparison"]
+
+[[bench]]
+name = "matmul"
 harness = false
 required-features = ["comparison"]

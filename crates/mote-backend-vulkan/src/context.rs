@@ -11,12 +11,13 @@ use vulkano::{
     },
     descriptor_set::allocator::StandardDescriptorSetAllocator,
     device::{
-        Device as VkDevice, DeviceCreateInfo, Queue, QueueCreateInfo, QueueFlags,
-        physical::PhysicalDeviceType,
+        Device as VkDevice, DeviceCreateInfo, DeviceExtensions, DeviceFeatures, Queue,
+        QueueCreateInfo, QueueFlags, physical::PhysicalDeviceType,
     },
     instance::{Instance, InstanceCreateInfo},
     memory::{MemoryPropertyFlags, allocator::StandardMemoryAllocator},
     pipeline::ComputePipeline,
+    shader::ShaderStages,
     sync::{self, GpuFuture},
 };
 
@@ -58,7 +59,10 @@ pub(crate) struct VulkanContextInner {
     pub(crate) command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
     pub(crate) descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     pub(crate) vector_add_pipeline: Mutex<Option<Arc<ComputePipeline>>>,
+    pub(crate) matmul_pipeline: Mutex<Option<Arc<ComputePipeline>>>,
+    pub(crate) matmul_cmma_pipeline: Mutex<Option<Arc<ComputePipeline>>>,
     pub(crate) memory_mode: VulkanMemoryMode,
+    cooperative_matrix_supported: bool,
     device_name: String,
 }
 
@@ -115,10 +119,41 @@ impl VulkanContext {
             .nth(ordinal as usize)
             .ok_or(VulkanError::DeviceUnavailable { ordinal, available })?;
         let device_name = physical_device.properties().device_name.clone();
+        let supported_extensions = physical_device.supported_extensions();
+        let supported_features = physical_device.supported_features();
+        let properties = physical_device.properties();
+        let cooperative_matrix_supported = supported_extensions.khr_cooperative_matrix
+            && supported_features.cooperative_matrix
+            && supported_features.shader_float16
+            && supported_features.uniform_and_storage_buffer16_bit_access
+            && supported_features.vulkan_memory_model
+            && supported_features.vulkan_memory_model_device_scope
+            && supported_features.subgroup_size_control
+            && properties
+                .required_subgroup_size_stages
+                .is_some_and(|stages| stages.intersects(ShaderStages::COMPUTE))
+            && properties.min_subgroup_size.is_some_and(|size| size <= 64)
+            && properties.max_subgroup_size.is_some_and(|size| size >= 64);
+
+        let enabled_extensions = DeviceExtensions {
+            khr_cooperative_matrix: cooperative_matrix_supported,
+            ..DeviceExtensions::empty()
+        };
+        let enabled_features = DeviceFeatures {
+            cooperative_matrix: cooperative_matrix_supported,
+            shader_float16: cooperative_matrix_supported,
+            subgroup_size_control: cooperative_matrix_supported,
+            uniform_and_storage_buffer16_bit_access: cooperative_matrix_supported,
+            vulkan_memory_model: cooperative_matrix_supported,
+            vulkan_memory_model_device_scope: cooperative_matrix_supported,
+            ..DeviceFeatures::empty()
+        };
 
         let (device, mut queues) = VkDevice::new(
             physical_device,
             DeviceCreateInfo {
+                enabled_extensions,
+                enabled_features,
                 queue_create_infos: vec![QueueCreateInfo {
                     queue_family_index,
                     ..Default::default()
@@ -148,7 +183,10 @@ impl VulkanContext {
                 command_buffer_allocator,
                 descriptor_set_allocator,
                 vector_add_pipeline: Mutex::new(None),
+                matmul_pipeline: Mutex::new(None),
+                matmul_cmma_pipeline: Mutex::new(None),
                 memory_mode: options.memory_mode,
+                cooperative_matrix_supported,
                 device_name,
             }),
         })
@@ -164,6 +202,10 @@ impl VulkanContext {
 
     pub fn memory_mode(&self) -> VulkanMemoryMode {
         self.inner.memory_mode
+    }
+
+    pub fn supports_cooperative_matrix(&self) -> bool {
+        self.inner.cooperative_matrix_supported
     }
 
     pub fn empty(&self, desc: TensorDesc) -> Result<Tensor, VulkanError> {

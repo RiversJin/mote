@@ -1,7 +1,8 @@
 #![cfg(feature = "vulkan-tests")]
 
 use mote_backend_vulkan::{
-    VulkanContext, VulkanContextOptions, VulkanMemoryMode, vector_add::vector_add,
+    VulkanContext, VulkanContextOptions, VulkanMemoryMode,
+    vector_add::{profile_vector_add, vector_add, vector_add_batch},
 };
 use mote_types::{DType, Encoding, Layout, Shape, TensorDesc};
 
@@ -35,6 +36,9 @@ fn adds_vectors_on_vulkan() {
     );
 
     vector_add(&context, &lhs, &rhs, &output).unwrap();
+    vector_add_batch(&context, &lhs, &rhs, &output, 4).unwrap();
+    let device_time = profile_vector_add(&context, &lhs, &rhs, &output, 1).unwrap();
+    assert!(!device_time.is_zero());
 
     let actual = context.read_bytes(&output).unwrap();
     let (actual, remainder) = actual.as_chunks::<{ size_of::<f32>() }>();

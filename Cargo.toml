@@ -8,6 +8,7 @@ members = [
     "crates/mote-backend-hip",
     "crates/mote-backend-vulkan",
     "crates/mote-types",
+    "crates/mote-reference",
 ]
 resolver = "2"
 
@@ -22,3 +23,14 @@ anyhow = "1"
 thiserror = "2"
 smallvec = "1"
 cubecl = { version = "0.10", default-features = false }
+cubecl-runtime = { version = "0.10", default-features = false, features = ["std"] }
+cubecl-hip-sys = "7.14"
+cubek-matmul = { version = "0.2", default-features = false, features = ["std"] }
+cubek-std = { version = "0.2", default-features = false, features = ["std"] }
+half = "2"
+
+[patch.crates-io]
+# Native HIP stream interop is being developed in the adjacent CubeCL checkout.
+cubecl = { path = "../cubecl/crates/cubecl" }
+cubecl-common = { path = "../cubecl/crates/cubecl-common" }
+cubecl-runtime = { path = "../cubecl/crates/cubecl-runtime" }
